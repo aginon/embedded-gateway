@@ -3,19 +3,22 @@
 #include "agn_packet.h"
 #include "agn_serial.h"
 
+#include "ESP8266WiFi.h"
+#include "../firebase/src/FirebaseArduino.h"
+
 // WiFi Variables
 
 static const char* ssid             = AGN_GATEWAY_WIFI_SSID;
 static const char* password         = AGN_GATEWAY_WIFI_PASS;
 
 // MQTT Varibles
-
+/*
 static const char* mqtt_server      = AGN_MQTT_SERVER;
 static const int   mqtt_port        = AGN_MQTT_SERVER_PORT;
 static const char* mqtt_fingerprint = AGN_MQTT_FINGERPRINT;
-
+*/
 WiFiClientSecure espClient;
-PubSubClient client(espClient);
+//PubSubClient client(espClient);
 
 long lastMsg = 0;
 char msg[50];
@@ -23,6 +26,8 @@ int value = 0;
 bool isSslVerified = false;
 
 AgnSerial master;
+StaticJsonBuffer<512> jsonBuffer;
+
 
 void setup_wifi() {
 
@@ -47,7 +52,7 @@ void setup_wifi() {
 	LOGGER_SERIAL.println(WiFi.macAddress());
 
 	// Verify MQTT server
-
+/*
 	bool isConnected;
 	while(!isSslVerified){
 		isConnected = espClient.connect(mqtt_server, mqtt_port);
@@ -69,8 +74,9 @@ void setup_wifi() {
 			continue;
 		}
 	}
+	*/
 }
-
+/*
 void onReceived(char* topic, byte* payload, unsigned int length) {
 	LOGGER_SERIAL.print("Message arrived [");
 	LOGGER_SERIAL.print(topic);
@@ -115,6 +121,15 @@ void reconnect() {
 		}
 	}
 }
+*/
+
+static uint32_t prevMicros = 0;
+uint32_t profile() {
+	uint32_t now = micros();
+	uint32_t retval = now - prevMicros;
+	prevMicros = now;
+	return retval;
+}
 
 void setup() {
 	pinMode(BUILTIN_LED, OUTPUT); // Initialize the BUILTIN_LED pin as an output
@@ -133,19 +148,25 @@ void setup() {
 	LOGGER_SERIAL.printf("Starting...\r\n");
 
 	setup_wifi();
+
+	Firebase.begin(AGN_FIREBASE_HOST, AGN_FIREBASE_KEY);
+	LOGGER_SERIAL.println("Firebase initialized!");
+	/*
 	client.setServer(mqtt_server, mqtt_port);
 	client.setCallback(onReceived);
+	*/
 }
 
 void loop() {
+	/*
 	if (isSslVerified) {
 		if (!client.connected()) {
 			reconnect();
 		}
 		client.loop();
-
+*/
 		long now = millis();
-		if (now - lastMsg > 120) {
+		if (now - lastMsg > 50) {
 			// Publish MQTT
 			lastMsg = now;
 			//++value;
@@ -156,20 +177,82 @@ void loop() {
 
 			// Receive Message
 			struct AGN_PACKET packet;
+			LOGGER_SERIAL.printf("Before Receive: %u", profile());
+			LOGGER_SERIAL.println();
 			master.receive(&packet);
+
+			LOGGER_SERIAL.printf("After Receive: %u", profile());
+			LOGGER_SERIAL.println();
+
 			LOGGER_SERIAL.print("Received Packet: (mg = ");
 			LOGGER_SERIAL.print(packet.magic, HEX);
-			LOGGER_SERIAL.print(", dp = ");
-			LOGGER_SERIAL.print(packet.depth);
+			LOGGER_SERIAL.print(", dp1 = ");
+			LOGGER_SERIAL.print(packet.depth1);
 			LOGGER_SERIAL.print(", hex1 = ");
 			LOGGER_SERIAL.print(packet.hex1, HEX);
 			LOGGER_SERIAL.print(", hex2 = ");
 			LOGGER_SERIAL.print(packet.hex2, HEX);
 			LOGGER_SERIAL.println(")");
+
+			// Firebase get packet
+
+			// Update packet
+			packet.hex1 = 0xF;
+			packet.hex2 = 0x5;
+			packet.magic = 0xA0A0;
+			packet.mode = 0x9A;
+			packet.status = 0xDDDD;
+
+			// Firebase send packet
+
+			char json[512];
+			sprintf(json,
+				      "{\"AGN_DEPTH1\":%d,\"AGN_DEPTH2\":%d}", packet.depth1, packet.depth2);
+
+			LOGGER_SERIAL.printf("JSON: %s\r\n", json);
+			JsonVariant variant = jsonBuffer.parse(json);
+
+			LOGGER_SERIAL.printf("Before Firebase Send: %u", profile());
+			LOGGER_SERIAL.println();
+			//Firebase.set("AGN_DEPTH", variant);
+			Firebase.set("AGN_DEPTH/01", packet.depth1);
+			Firebase.set("AGN_DEPTH/02", packet.depth2);
+
+			LOGGER_SERIAL.printf("After Firebase Send: %u", profile());
+			LOGGER_SERIAL.println();
+
+			// Required delay between receive and send
+			//delay(20);
+
+			// Send Message
+
+
+			LOGGER_SERIAL.printf("Before Send: %u", profile());
+			LOGGER_SERIAL.println();
+			master.send(&packet);
+
+
+			LOGGER_SERIAL.printf("After Send: %u", profile());
+			LOGGER_SERIAL.println();
+
+
+			LOGGER_SERIAL.print("Sent Packet: (mg = ");
+			LOGGER_SERIAL.print(packet.magic, HEX);
+			LOGGER_SERIAL.print(", dp1 = ");
+			LOGGER_SERIAL.print(packet.depth1);
+			LOGGER_SERIAL.print(", hex1 = ");
+			LOGGER_SERIAL.print(packet.hex1, HEX);
+			LOGGER_SERIAL.print(", hex2 = ");
+			LOGGER_SERIAL.print(packet.hex2, HEX);
+			LOGGER_SERIAL.println(")");
+
+
 		}
+		/*
 	} else {
 		LOGGER_SERIAL.println("SSL not Verified!");
 		delay(1000);
 	}
+	*/
 }
 

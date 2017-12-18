@@ -31,9 +31,15 @@
 
 /* MQTTS Settings */
 
+/*
 #define AGN_MQTT_SERVER "test.mosquitto.org"
 #define AGN_MQTT_SERVER_PORT 8883
 #define AGN_MQTT_FINGERPRINT "7E 36 22 01 F9 7E 99 2F C5 DB 3D BE AC 48 67 5B 5D 47 94 D2"
 //String fingerprint = "A2 79 92 D3 42 0C 89 F2 93 D3 51 37 8B A5 F5 67 5F 74 FE 3C";
+*/
+
+/* Firebase Settings */
+#define AGN_FIREBASE_HOST "hw-lab.firebaseio.com"
+#define AGN_FIREBASE_KEY "Z6Mywo3VDCO4T6BIPdv5gZpSkxflHmt9VpD37rdt"
 
 #endif /* CONFIG_H_ */

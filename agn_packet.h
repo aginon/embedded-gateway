@@ -12,7 +12,10 @@
 
 struct AGN_PACKET_SIZES {
 	uint8_t magic;
-	uint8_t depth;
+	uint8_t depth1;
+	uint8_t depth2;
+	uint8_t status;
+	uint8_t mode;
 	uint8_t hex1;
 	uint8_t hex2;
 };
@@ -21,7 +24,10 @@ extern const struct AGN_PACKET_SIZES AGN_PACKET_SIZES_CONFIG;
 
 struct AGN_PACKET {
 	uint16_t magic:16;
-	uint32_t depth:32;
+	uint32_t depth1:32;
+	uint32_t depth2:32;
+	uint16_t status:16;
+	uint8_t mode:8;
 	uint8_t hex1:4;
 	uint8_t hex2:4;
 };
