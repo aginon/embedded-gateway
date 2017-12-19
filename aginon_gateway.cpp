@@ -19,8 +19,16 @@ int value = 0;
 bool isSslVerified = false;
 
 const int WIFI_UNCONNECTED_PIN = 14;	// D5
+
+// Heartbeat Variables
 const int AGN_HB_IN_PIN = 12;			// D6
 const int AGN_HB_OUT_PIN = 13;			// D7
+const int AGN_HB_THRESHOLD = 3;
+int AGN_HB_COUNTER = 0;
+long AGN_HB_LAST_HEARTBEAT = 0;
+uint16_t AGN_HB_ERROR = 0;
+int AGN_HB_IN_STATE = LOW;
+int AGN_HB_OUT_STATE = HIGH;
 
 AgnSerial master;
 StaticJsonBuffer<512> jsonBuffer;
@@ -71,7 +79,9 @@ void setup() {
 	pinMode(WIFI_UNCONNECTED_PIN, OUTPUT);
 	digitalWrite(WIFI_UNCONNECTED_PIN, HIGH);
 
-	pinMode(AGN_HB_IN_PIN, INPUT_PULLUP);
+	pinMode(AGN_HB_IN_PIN, INPUT);
+	pinMode(AGN_HB_OUT_PIN, OUTPUT);
+	digitalWrite(AGN_HB_OUT_PIN, AGN_HB_OUT_STATE);
 
 	LOGGER_SERIAL.printf("\r================================================================================\r\n");
 	LOGGER_SERIAL.printf("                   Logger for Aginon-IoT Gateway (esp8266)\r\n");
@@ -90,6 +100,9 @@ void setup() {
 	LOGGER_SERIAL.println("Firebase initialized!");
 }
 
+
+struct AGN_PACKET packet;
+
 void loop() {
 	if (!WiFi.isConnected()) {
 		LOGGER_SERIAL.println("WiFi connection lost");
@@ -106,7 +119,6 @@ void loop() {
 		//client.publish("/qos0", msg);
 
 		// Receive Message
-		struct AGN_PACKET packet;
 		LOGGER_SERIAL.printf("Before Receive: %u", profile());
 		LOGGER_SERIAL.println();
 		master.receive(&packet);
@@ -130,29 +142,37 @@ void loop() {
 		packet.hex1 = 0xF;
 		packet.hex2 = 0x5;
 		packet.magic = 0xA0A0;
-		packet.mode = 0x9A;
-		packet.status = 0xDDDD;
+		packet.status |= (AGN_HB_ERROR << 15);
+
+		LOGGER_SERIAL.printf("Packet Status: %04x", packet.status);
 
 		// Firebase send packet
 
 		char json[512];
 		sprintf(json,
-				  "{\"AGN_DEPTH1\":%d,\"AGN_DEPTH2\":%d}", packet.depth1, packet.depth2);
+				  "{\"AGN_DEPTH1\":%d,\"AGN_DEPTH2\":%d,\"AGN_MASTER\":\"%s\"}",
+				  packet.depth1, packet.depth2, AGN_HB_ERROR == 1 ? "Lost connection" : "Connected!");
 
 		LOGGER_SERIAL.printf("JSON: %s\r\n", json);
 		JsonVariant variant = jsonBuffer.parse(json);
 
 		LOGGER_SERIAL.printf("Before Firebase Send: %u", profile());
 		LOGGER_SERIAL.println();
-		//Firebase.set("AGN_DEPTH", variant);
+		Firebase.set("AGN_VIA_JSON", variant);
 		Firebase.set("AGN_DEPTH/01", packet.depth1);
 		Firebase.set("AGN_DEPTH/02", packet.depth2);
+		Firebase.set("AGN_STATUS", packet.status);
+		Firebase.set("AGN_MASTER", AGN_HB_ERROR == 1 ? "Lost connection" : "Connected!");
 
 		LOGGER_SERIAL.printf("After Firebase Send: %u", profile());
 		LOGGER_SERIAL.println();
 
+		uint8_t mode = Firebase.getInt("AGN_SWITCH");
+		packet.mode = mode;
+
 		// Required delay between receive and send
-		//delay(20);
+		// (If this number is too low, resync events will be triggered often on master
+		delay(50);
 
 		// Send Message
 
@@ -174,9 +194,40 @@ void loop() {
 		LOGGER_SERIAL.print(packet.hex1, HEX);
 		LOGGER_SERIAL.print(", hex2 = ");
 		LOGGER_SERIAL.print(packet.hex2, HEX);
+		LOGGER_SERIAL.print(", mode = ");
+		LOGGER_SERIAL.print(packet.mode, HEX);
 		LOGGER_SERIAL.println(")");
+	}
 
 
+	// Run this every 5 seconds
+	if (now - AGN_HB_LAST_HEARTBEAT > 4999) {
+		AGN_HB_LAST_HEARTBEAT = now;
+
+		// TOGGLE Heartbeat out
+		AGN_HB_OUT_STATE ^= 0x01;
+		LOGGER_SERIAL.printf("out state = %d\r\n", AGN_HB_OUT_STATE);
+		digitalWrite(AGN_HB_OUT_PIN, AGN_HB_OUT_STATE);
+
+		// Check heartbeat in
+		int nextState = digitalRead(AGN_HB_IN_PIN);
+		if (nextState != AGN_HB_IN_STATE) {
+			// Heartbeat is normal
+			LOGGER_SERIAL.println("HEARTBEAT IS NORMAL");
+			AGN_HB_COUNTER = 0;
+			AGN_HB_ERROR = 0;
+		} else {
+			// Heartbeat malfunction
+			LOGGER_SERIAL.println("HEARTBEAT MIGHT BE MALFUNCTIONING");
+			AGN_HB_COUNTER++;
+			if (AGN_HB_COUNTER >= AGN_HB_THRESHOLD) {
+				LOGGER_SERIAL.println("HEARTBEAT IS MALFUNCTIONING");
+				AGN_HB_ERROR = 1;
+			} else {
+				AGN_HB_ERROR = 0;
+			}
+		}
+		AGN_HB_IN_STATE = nextState;
 	}
 }
 
