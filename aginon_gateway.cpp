@@ -11,25 +11,23 @@
 static const char* ssid             = AGN_GATEWAY_WIFI_SSID;
 static const char* password         = AGN_GATEWAY_WIFI_PASS;
 
-// MQTT Varibles
-/*
-static const char* mqtt_server      = AGN_MQTT_SERVER;
-static const int   mqtt_port        = AGN_MQTT_SERVER_PORT;
-static const char* mqtt_fingerprint = AGN_MQTT_FINGERPRINT;
-*/
 WiFiClientSecure espClient;
-//PubSubClient client(espClient);
 
 long lastMsg = 0;
 char msg[50];
 int value = 0;
 bool isSslVerified = false;
 
+const int WIFI_UNCONNECTED_PIN = 14;	// D5
+const int AGN_HB_IN_PIN = 12;			// D6
+const int AGN_HB_OUT_PIN = 13;			// D7
+
 AgnSerial master;
 StaticJsonBuffer<512> jsonBuffer;
 
-
 void setup_wifi() {
+
+	digitalWrite(WIFI_UNCONNECTED_PIN, HIGH);
 
 	delay(10);
 	// We start by connecting to a WiFi network
@@ -50,78 +48,12 @@ void setup_wifi() {
 	LOGGER_SERIAL.println(WiFi.localIP());
 	LOGGER_SERIAL.print("MAC address: ");
 	LOGGER_SERIAL.println(WiFi.macAddress());
+	LOGGER_SERIAL.print("Subnet Mask: ");
+	LOGGER_SERIAL.println(WiFi.subnetMask());
 
-	// Verify MQTT server
-/*
-	bool isConnected;
-	while(!isSslVerified){
-		isConnected = espClient.connect(mqtt_server, mqtt_port);
-		if (!isConnected) {
-			LOGGER_SERIAL.printf("Unable to connect to %s:%d\r\nRetrying in 5 seconds...\r\n", mqtt_server, mqtt_port);
-			delay(5000);
-			continue;
-		}
-
-		isSslVerified = espClient.verify(mqtt_fingerprint, mqtt_server);
-		espClient.stop();
-
-		if (isSslVerified) {
-			LOGGER_SERIAL.println("MQTT Server fingerprint matches!");
-			break;
-		} else {
-			LOGGER_SERIAL.println("MQTT Server fingerprint doesn't match!\r\nRetrying in 5 seconds...\r\n");
-			delay(5000);
-			continue;
-		}
-	}
-	*/
-}
-/*
-void onReceived(char* topic, byte* payload, unsigned int length) {
-	LOGGER_SERIAL.print("Message arrived [");
-	LOGGER_SERIAL.print(topic);
-	LOGGER_SERIAL.print("] ");
-	for (size_t i = 0; i < length; i++) {
-		LOGGER_SERIAL.print((char) payload[i]);
-	}
-	LOGGER_SERIAL.println();
-
-	// Switch on the LED if an 1 was received as first character
-	if ((char) payload[0] == '1') {
-		digitalWrite(BUILTIN_LED, LOW); // Turn the LED on (Note that LOW is the voltage level
-		// but actually the LED is on; this is because
-		// it is active low on the ESP-01)
-	} else {
-		digitalWrite(BUILTIN_LED, HIGH); // Turn the LED off by making the voltage HIGH
-	}
-
+	digitalWrite(WIFI_UNCONNECTED_PIN, LOW);
 }
 
-void reconnect() {
-	// Loop until we're reconnected
-
-	while (!client.connected()) {
-		LOGGER_SERIAL.printf("Attempting MQTT connection to %s:%d...", mqtt_server, mqtt_port);
-		// Create a random client ID
-		String clientId = "ESP8266Client-";
-		clientId += String(random(0xffff), HEX);
-		// Attempt to connect
-		if (client.connect(clientId.c_str())) {
-			LOGGER_SERIAL.println(" connected!");
-			// Once connected, publish an announcement...
-			client.publish("/qos0", "SLV0717 connected!");
-			// ... and resubscribe
-			client.subscribe("inTopic");
-		} else {
-			LOGGER_SERIAL.print("failed, rc=");
-			LOGGER_SERIAL.print(client.state());
-			LOGGER_SERIAL.println(" try again in 5 seconds");
-			// Wait 5 seconds before retrying
-			delay(5000);
-		}
-	}
-}
-*/
 
 static uint32_t prevMicros = 0;
 uint32_t profile() {
@@ -135,6 +67,11 @@ void setup() {
 	pinMode(BUILTIN_LED, OUTPUT); // Initialize the BUILTIN_LED pin as an output
 	MASTER_SERIAL.begin(MASTER_SERIAL_BAUD_RATE, MASTER_SERIAL_CONFIG);
 	LOGGER_SERIAL.begin(LOGGER_SERIAL_BAUD_RATE, LOGGER_SERIAL_CONFIG);
+
+	pinMode(WIFI_UNCONNECTED_PIN, OUTPUT);
+	digitalWrite(WIFI_UNCONNECTED_PIN, HIGH);
+
+	pinMode(AGN_HB_IN_PIN, INPUT_PULLUP);
 
 	LOGGER_SERIAL.printf("\r================================================================================\r\n");
 	LOGGER_SERIAL.printf("                   Logger for Aginon-IoT Gateway (esp8266)\r\n");
@@ -151,108 +88,95 @@ void setup() {
 
 	Firebase.begin(AGN_FIREBASE_HOST, AGN_FIREBASE_KEY);
 	LOGGER_SERIAL.println("Firebase initialized!");
-	/*
-	client.setServer(mqtt_server, mqtt_port);
-	client.setCallback(onReceived);
-	*/
 }
 
 void loop() {
-	/*
-	if (isSslVerified) {
-		if (!client.connected()) {
-			reconnect();
-		}
-		client.loop();
-*/
-		long now = millis();
-		if (now - lastMsg > 50) {
-			// Publish MQTT
-			lastMsg = now;
-			//++value;
-			//strcpy(msg, "SLV0717 Heartbeat");
-			//LOGGER_SERIAL.print("Publish message: ");
-			//LOGGER_SERIAL.println(msg);
-			//client.publish("/qos0", msg);
-
-			// Receive Message
-			struct AGN_PACKET packet;
-			LOGGER_SERIAL.printf("Before Receive: %u", profile());
-			LOGGER_SERIAL.println();
-			master.receive(&packet);
-
-			LOGGER_SERIAL.printf("After Receive: %u", profile());
-			LOGGER_SERIAL.println();
-
-			LOGGER_SERIAL.print("Received Packet: (mg = ");
-			LOGGER_SERIAL.print(packet.magic, HEX);
-			LOGGER_SERIAL.print(", dp1 = ");
-			LOGGER_SERIAL.print(packet.depth1);
-			LOGGER_SERIAL.print(", hex1 = ");
-			LOGGER_SERIAL.print(packet.hex1, HEX);
-			LOGGER_SERIAL.print(", hex2 = ");
-			LOGGER_SERIAL.print(packet.hex2, HEX);
-			LOGGER_SERIAL.println(")");
-
-			// Firebase get packet
-
-			// Update packet
-			packet.hex1 = 0xF;
-			packet.hex2 = 0x5;
-			packet.magic = 0xA0A0;
-			packet.mode = 0x9A;
-			packet.status = 0xDDDD;
-
-			// Firebase send packet
-
-			char json[512];
-			sprintf(json,
-				      "{\"AGN_DEPTH1\":%d,\"AGN_DEPTH2\":%d}", packet.depth1, packet.depth2);
-
-			LOGGER_SERIAL.printf("JSON: %s\r\n", json);
-			JsonVariant variant = jsonBuffer.parse(json);
-
-			LOGGER_SERIAL.printf("Before Firebase Send: %u", profile());
-			LOGGER_SERIAL.println();
-			//Firebase.set("AGN_DEPTH", variant);
-			Firebase.set("AGN_DEPTH/01", packet.depth1);
-			Firebase.set("AGN_DEPTH/02", packet.depth2);
-
-			LOGGER_SERIAL.printf("After Firebase Send: %u", profile());
-			LOGGER_SERIAL.println();
-
-			// Required delay between receive and send
-			//delay(20);
-
-			// Send Message
-
-
-			LOGGER_SERIAL.printf("Before Send: %u", profile());
-			LOGGER_SERIAL.println();
-			master.send(&packet);
-
-
-			LOGGER_SERIAL.printf("After Send: %u", profile());
-			LOGGER_SERIAL.println();
-
-
-			LOGGER_SERIAL.print("Sent Packet: (mg = ");
-			LOGGER_SERIAL.print(packet.magic, HEX);
-			LOGGER_SERIAL.print(", dp1 = ");
-			LOGGER_SERIAL.print(packet.depth1);
-			LOGGER_SERIAL.print(", hex1 = ");
-			LOGGER_SERIAL.print(packet.hex1, HEX);
-			LOGGER_SERIAL.print(", hex2 = ");
-			LOGGER_SERIAL.print(packet.hex2, HEX);
-			LOGGER_SERIAL.println(")");
-
-
-		}
-		/*
-	} else {
-		LOGGER_SERIAL.println("SSL not Verified!");
-		delay(1000);
+	if (!WiFi.isConnected()) {
+		LOGGER_SERIAL.println("WiFi connection lost");
+		setup_wifi();
 	}
-	*/
+	long now = millis();
+	if (now - lastMsg > 50) {
+		// Publish MQTT
+		lastMsg = now;
+		//++value;
+		//strcpy(msg, "SLV0717 Heartbeat");
+		//LOGGER_SERIAL.print("Publish message: ");
+		//LOGGER_SERIAL.println(msg);
+		//client.publish("/qos0", msg);
+
+		// Receive Message
+		struct AGN_PACKET packet;
+		LOGGER_SERIAL.printf("Before Receive: %u", profile());
+		LOGGER_SERIAL.println();
+		master.receive(&packet);
+
+		LOGGER_SERIAL.printf("After Receive: %u", profile());
+		LOGGER_SERIAL.println();
+
+		LOGGER_SERIAL.print("Received Packet: (mg = ");
+		LOGGER_SERIAL.print(packet.magic, HEX);
+		LOGGER_SERIAL.print(", dp1 = ");
+		LOGGER_SERIAL.print(packet.depth1);
+		LOGGER_SERIAL.print(", hex1 = ");
+		LOGGER_SERIAL.print(packet.hex1, HEX);
+		LOGGER_SERIAL.print(", hex2 = ");
+		LOGGER_SERIAL.print(packet.hex2, HEX);
+		LOGGER_SERIAL.println(")");
+
+		// Firebase get packet
+
+		// Update packet
+		packet.hex1 = 0xF;
+		packet.hex2 = 0x5;
+		packet.magic = 0xA0A0;
+		packet.mode = 0x9A;
+		packet.status = 0xDDDD;
+
+		// Firebase send packet
+
+		char json[512];
+		sprintf(json,
+				  "{\"AGN_DEPTH1\":%d,\"AGN_DEPTH2\":%d}", packet.depth1, packet.depth2);
+
+		LOGGER_SERIAL.printf("JSON: %s\r\n", json);
+		JsonVariant variant = jsonBuffer.parse(json);
+
+		LOGGER_SERIAL.printf("Before Firebase Send: %u", profile());
+		LOGGER_SERIAL.println();
+		//Firebase.set("AGN_DEPTH", variant);
+		Firebase.set("AGN_DEPTH/01", packet.depth1);
+		Firebase.set("AGN_DEPTH/02", packet.depth2);
+
+		LOGGER_SERIAL.printf("After Firebase Send: %u", profile());
+		LOGGER_SERIAL.println();
+
+		// Required delay between receive and send
+		//delay(20);
+
+		// Send Message
+
+
+		LOGGER_SERIAL.printf("Before Send: %u", profile());
+		LOGGER_SERIAL.println();
+		master.send(&packet);
+
+
+		LOGGER_SERIAL.printf("After Send: %u", profile());
+		LOGGER_SERIAL.println();
+
+
+		LOGGER_SERIAL.print("Sent Packet: (mg = ");
+		LOGGER_SERIAL.print(packet.magic, HEX);
+		LOGGER_SERIAL.print(", dp1 = ");
+		LOGGER_SERIAL.print(packet.depth1);
+		LOGGER_SERIAL.print(", hex1 = ");
+		LOGGER_SERIAL.print(packet.hex1, HEX);
+		LOGGER_SERIAL.print(", hex2 = ");
+		LOGGER_SERIAL.print(packet.hex2, HEX);
+		LOGGER_SERIAL.println(")");
+
+
+	}
 }
 
