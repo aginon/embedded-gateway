@@ -158,9 +158,14 @@ void loop() {
 
 		LOGGER_SERIAL.printf("Before Firebase Send: %u", profile());
 		LOGGER_SERIAL.println();
+
 		Firebase.set("AGN_VIA_JSON", variant);
 		Firebase.set("AGN_DEPTH/01", packet.depth1);
 		Firebase.set("AGN_DEPTH/02", packet.depth2);
+		Firebase.set("SensorInfo/S1/detectStatus", packet.detection & (1 << 3) ? "detected" : "not detected");
+		Firebase.set("SensorInfo/S1/isActive", packet.status & (1 << 9) ? "online" : "offline");
+		Firebase.set("SensorInfo/S2/detectStatus", packet.detection & (1 << 2) ? "detected" : "not detected");
+		Firebase.set("SensorInfo/S2/isActive", packet.status & (1 << 8) ? "online" : "offline");
 		Firebase.set("AGN_STATUS", packet.status);
 		Firebase.set("AGN_MASTER", AGN_HB_ERROR == 1 ? "Lost connection" : "Connected!");
 

@@ -16,6 +16,7 @@ struct AGN_PACKET_SIZES {
 	uint8_t depth2;
 	uint8_t status;
 	uint8_t mode;
+	uint8_t detection;
 	uint8_t hex1;
 	uint8_t hex2;
 };
@@ -28,6 +29,7 @@ struct AGN_PACKET {
 	uint32_t depth2:32;
 	uint16_t status:16;
 	uint8_t mode:8;
+	uint8_t detection:8;
 	uint8_t hex1:4;
 	uint8_t hex2:4;
 };
@@ -53,3 +55,4 @@ void AGN_PACKET_DESERIALIZE(struct AGN_PACKET *packet, uint8_t* bytes);
 
 
 #endif /* AGN_PACKET_H_ */
+

@@ -9,7 +9,7 @@
 #include <string.h>
 
 // SIZE IN BYTES
-const int AGN_PACKET_SIZE = 14;
+const int AGN_PACKET_SIZE = 15;
 
 const struct AGN_PACKET_SIZES AGN_PACKET_SIZES_CONFIG =  {
 		16, 	// magic is 16 bit
@@ -17,6 +17,7 @@ const struct AGN_PACKET_SIZES AGN_PACKET_SIZES_CONFIG =  {
 		32, 	// depth2 is 32 bit
 		16,		// status is 16 bit
 		8,		// mode is 8 bit
+		8, 		// detection is 8 bit
 		4, 		// hex1 is 4 bit
 		4		// hex2 is 4 bit
 };
@@ -33,8 +34,11 @@ void AGN_PACKET_SERIALIZE(struct AGN_PACKET *packet, uint8_t* bytes) {
 	memcpy(&bytes[10], &status, 2);
 	uint8_t mode = packet->mode;
 	memcpy(&bytes[12], &mode, 1);
+	uint8_t detection = packet->detection;
+	memcpy(&bytes[13], &detection, 1);
+
 	uint8_t hex = packet->hex1 << 4 | (packet->hex2 & 0x0F);
-	memcpy(&bytes[13], &hex, 1);
+	memcpy(&bytes[14], &hex, 1);
 }
 
 void AGN_PACKET_DESERIALIZE(struct AGN_PACKET *packet, uint8_t* bytes) {
@@ -58,8 +62,12 @@ void AGN_PACKET_DESERIALIZE(struct AGN_PACKET *packet, uint8_t* bytes) {
 	memcpy(&mode, &bytes[12], 1);
 	packet->mode = mode;
 
+	uint8_t detection = 0;
+	memcpy(&detection, &bytes[13], 1);
+	packet->detection = detection;
+
 	uint8_t hex = 0;
-	memcpy(&hex, &bytes[13], 1);
+	memcpy(&hex, &bytes[14], 1);
 	packet->hex1 = (hex >> 4) & 0xF;
 	packet->hex2 = (hex) & 0xF;
 }
